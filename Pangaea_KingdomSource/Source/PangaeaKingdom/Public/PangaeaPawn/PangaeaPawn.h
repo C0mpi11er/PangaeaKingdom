@@ -18,6 +18,16 @@ struct FMouseProjectionResult
 	bool MValidProjection{false};
 };
 
+USTRUCT()
+struct FCursorDistanceFromViewportResult
+{
+	GENERATED_BODY()
+    // the direction of the mouse cursor 
+	FVector MDirection{};
+    
+	float MStrength{};
+};
+
 
 UCLASS()
 class PANGAEAKINGDOM_API APangaeaPawn : public APawn
@@ -28,7 +38,6 @@ public:
 	// Sets default values for this pawn's properties
 	APangaeaPawn();
 
-	
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
@@ -36,18 +45,18 @@ protected:
 	//called to update the zoom
 	void UpdateZoom();
 
-    // Called every frame
- 	virtual void Tick(float DeltaTime) override;
+	// Called every frame
+	virtual void Tick(float DeltaTime) override;
 	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 	//to check if controller is valid and set it
 	void VerifyPangaeaController();
 	//BindInputActions
 	UFUNCTION()
-	void Move(const FInputActionValue&InputActionValue);
-	void Spin(const FInputActionValue&InputActionValue);
-	void Zoom(const FInputActionValue&InputActionValue);
-	void DragMove(const FInputActionValue&InputActionValue);
+	void Move(const FInputActionValue& InputActionValue);
+	void Spin(const FInputActionValue& InputActionValue);
+	void Zoom(const FInputActionValue& InputActionValue);
+	void DragMove(const FInputActionValue& InputActionValue);
 	//used to select village if valid or drag other wise
 	void DragOrSelect();
 	//to remove the drag mapping context
@@ -58,6 +67,8 @@ protected:
 	//calculates the offset between the camera and spring arm if using lag
 	FVector CalculateCameraAndBoomOffset();
 
+    
+	
 	//use to check the current mouse and set it 
 	void CheckMouseScreenPosition();
 
@@ -66,7 +77,7 @@ protected:
 	//adds delta to the position of this actor in wold space
 	void TrackMove();
 	//interpolate teh cursor position from one point to another
-	void  UpdateCursorPosition();
+	void UpdateCursorPosition();
 
 	//this function is called 0.1 sec to updated the cursor position with the mouse
 	void MoveTracking();
@@ -78,86 +89,91 @@ protected:
 	UFUNCTION()
 	void FireMoveTracking();
 
-	
+	FCursorDistanceFromViewportResult CursorDistanceFromViewportCentre(const FVector2d& CursorPosOffset);
+
+	    //edge screen movement
+	FCursorDistanceFromViewportResult EdgeMove();
+
 private:
 	//to select Actors
 	UPROPERTY(EditAnywhere)
 	TObjectPtr<UStaticMeshComponent> MCursor;
-    //to give an isometric view 
+	//to give an isometric view 
 	UPROPERTY(EditAnywhere)
 	TObjectPtr<class USpringArmComponent> MCameraBoom;
 
 	UPROPERTY(EditAnywhere)
-    TObjectPtr<class UCameraComponent>MCameraComp;
+	TObjectPtr<class UCameraComponent> MCameraComp;
 
 	//to detect Pawn collision
 	UPROPERTY(EditAnywhere)
-	TObjectPtr<class USphereComponent>MCollisionSphereComp;
+	TObjectPtr<class USphereComponent> MCollisionSphereComp;
 
 	/*MappingContext*/
 	//mappintcontext for basic pawn movement
 	UPROPERTY(EditAnywhere)
-	TObjectPtr<class UInputMappingContext>MInputMappingContext;
+	TObjectPtr<class UInputMappingContext> MInputMappingContext;
 
 	//this mapping context for villager mode
-   UPROPERTY(EditAnywhere)
-	TObjectPtr<class UInputMappingContext>MVillageInputMappingContext;
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<class UInputMappingContext> MVillageInputMappingContext;
 
 	//mapping context for drag
 	UPROPERTY(EditAnywhere)
-	TObjectPtr<class UInputMappingContext>MDragInputMappingContext;
-    /*/MappingContext*/
+	TObjectPtr<class UInputMappingContext> MDragInputMappingContext;
+	/*/MappingContext*/
 
 	/*Input Actions*/
 	UPROPERTY(EditAnywhere)
-	TObjectPtr<class UInputAction>MInputActionMove;
+	TObjectPtr<class UInputAction> MInputActionMove;
 
 	//pointer to input action spin
 	UPROPERTY(EditAnywhere)
-	TObjectPtr<class UInputAction>MInputActionSpin;
+	TObjectPtr<class UInputAction> MInputActionSpin;
 
 	//pointer to input action zoom
 	UPROPERTY(EditAnywhere)
-	TObjectPtr<class UInputAction>MInputActionZoom;
+	TObjectPtr<class UInputAction> MInputActionZoom;
 
 	//pointer to input action drag
 	UPROPERTY(EditAnywhere)
-	TObjectPtr<class UInputAction>MInputActionDrag;
+	TObjectPtr<class UInputAction> MInputActionDrag;
 
 	//pointer to input action villager
 	UPROPERTY(EditAnywhere)
-	TObjectPtr<class UInputAction>MInputActionVillager;
+	TObjectPtr<class UInputAction> MInputActionVillager;
 
 	/*/InputAction*/
 
 	UPROPERTY(EditAnywhere)
-	TObjectPtr<class UFloatingPawnMovement>MFloatMovementComp;
+	TObjectPtr<class UFloatingPawnMovement> MFloatMovementComp;
 
 	//a player controller for the pangaea pawn
 	UPROPERTY()
-	TObjectPtr<class APangaeaPlayerController>MPangaeaPlayerController;
+	TObjectPtr<class APangaeaPlayerController> MPangaeaPlayerController;
 
 	//to add and remove context mappings
 	UPROPERTY()
-	TObjectPtr<class UEnhancedInputLocalPlayerSubsystem>MEnhanceInputSubsystem;
-	
-    //to know if the player is zooming in or out
+	TObjectPtr<class UEnhancedInputLocalPlayerSubsystem> MEnhanceInputSubsystem;
+
+	//to know if the player is zooming in or out
 	float MZoomDirection{};
 
 	float MZoomValue{0.5};
-   //to return figures smoothly for interpolation at diff points in time
+	//to return figures smoothly for interpolation at diff points in time
 	UPROPERTY(EditAnywhere)
-	TObjectPtr<class UCurveFloat>MZoomCurveFloat;
+	TObjectPtr<class UCurveFloat> MZoomCurveFloat;
 
 	//the position of the mouse on the screen
-     FVector MMouseTargetHandle{};
+	FVector MMouseTargetHandle{};
 
-	
+
 	//to keep track of when to begin move tracking on begin play
 	FTimerHandle MoveTrackingTimerHandle;
+
+	//to be scaled with mouse move input value during edge move distance
+	float MEdgeMoveDistance{50.0};
 public:
-	
 	//returns and cast pangaea Pawn controller to a player controller
-	APlayerController*GetPangaeaPlayerController() const;
-	
+	APlayerController* GetPangaeaPlayerController() const;
 };
