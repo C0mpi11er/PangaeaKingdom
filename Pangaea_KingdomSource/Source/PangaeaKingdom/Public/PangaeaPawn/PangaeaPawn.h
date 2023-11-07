@@ -1,7 +1,6 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
-
 #include "InputActionValue.h"
 #include "UObject/ObjectPtr.h"
 #include "CoreMinimal.h"
@@ -58,16 +57,16 @@ protected:
 	void Zoom(const FInputActionValue& InputActionValue);
 	void DragMove(const FInputActionValue& InputActionValue);
 	//used to select village if valid or drag other wise
-	void DragOrSelect();
+	void DragOrSelect(const FInputActionValue&InputActionValue);
 	//to remove the drag mapping context
-	void RemoveDragMappingContext();
-
+	void RemoveDragMappingContext(const FInputActionValue&InputActionValue);
+	
 	//called weh villager mapping context is triggered
-	void HoverActor();
+	void HoverActor(const FInputActionValue&InputActionValue);
 	//calculates the offset between the camera and spring arm if using lag
 	FVector CalculateCameraAndBoomOffset();
-
-    
+     //this function check for the closest actor this class is hovering over and sets it to the hover actor
+     void CheckAndSetClosetHoverActor();
 	
 	//use to check the current mouse and set it 
 	void CheckMouseScreenPosition();
@@ -94,6 +93,38 @@ protected:
 	    //edge screen movement
 	FCursorDistanceFromViewportResult EdgeMove();
 
+
+	//this function is triggered when this pawn overlaps with another actor
+	UFUNCTION()
+	void OnPangaeaPawnBeginOverlap(AActor*OverlappedActor,AActor*OtherActor);
+
+	UFUNCTION()
+	void OnPangaeaPawnEndOverlap(AActor* OverlappedActor, AActor* OtherActor);
+
+	//triggers the hover closest loop
+	UFUNCTION()
+	void StartClosestHoverCheckTimer();
+
+	//to update and spawn niagara pathway effect from selected villager to task
+	//update the path for villager to take to perform a given task
+	UFUNCTION()
+	void UpdatePathway();
+    //this function check if the hover actor is on a villager or not
+	AActor* VillagerOverlapCheck();
+
+	//this functions spawns the niagara path system and calls the update path function
+	void VillagerSelect(APawn*PangaeaPawn);
+
+	//to release the selected villager to perform an action if there is one
+	void VillagerRelease();
+    
+	
+    //starts update part timer and loops till selected villager is released
+	void StartUpdatePathTimer();
+
+	//stops the update pathway function from looping
+	UFUNCTION()
+	void StopUpdatePathTimer();
 private:
 	//to select Actors
 	UPROPERTY(EditAnywhere)
@@ -173,7 +204,43 @@ private:
 
 	//to be scaled with mouse move input value during edge move distance
 	float MEdgeMoveDistance{50.0};
+
+	//the actor the Pangaea_pawn is overing over
+	UPROPERTY(VisibleAnywhere)
+	TObjectPtr<AActor>MHoverActor;
+
+	//the timer that starts and pauses the looping closets actor check function
+	FTimerHandle MClosetHoverTimerHandle;
+
+	//the timer reset on every loop time completion
+	float MCloseHoverLoopTime{0.01};
+
+	//the niagara system that spawns when a villager is selected
+    UPROPERTY(EditAnywhere)
+	TObjectPtr<class UNiagaraSystem>MNiagaraTargetSystem;
+	
+	//to identify the villager path and target,pointer to the niagara target system
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<class UNiagaraComponent>MNiagaraComponentPath;
+
+	//pointer to the currently selected villager
+	UPROPERTY(VisibleAnywhere)
+	TObjectPtr<class AActor>MSelectedVillager;
+
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<USceneComponent>MDefaultRootComponent;
+
+	//paths vector array on nav mesh  from Cursor to Selected villager
+	UPROPERTY()
+	TArray<FVector>MPathPoints;
+
+	//handles the timer for the update pathway function
+	FTimerHandle MUpdatePathTimerHandle;
+	//after this time the functions triggers again
+	float MUpdatePathResetTime{0.01f};
 public:
 	//returns and cast pangaea Pawn controller to a player controller
 	APlayerController* GetPangaeaPlayerController() const;
+
+	FORCEINLINE void SetHoverActor(AActor*T_HoverActor){MHoverActor=T_HoverActor;}
 };

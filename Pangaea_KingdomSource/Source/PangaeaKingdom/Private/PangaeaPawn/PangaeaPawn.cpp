@@ -5,6 +5,7 @@
 #include "Components/InputComponent.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "NavigationPath.h"
 #include "Camera/CameraComponent.h"
 #include "Components/SphereComponent.h"
 #include "GameFramework/FloatingPawnMovement.h"
@@ -12,12 +13,19 @@
 #include "Kismet/KismetMathLibrary.h"
 #include "PangaeaKingdom/Public/PangaeaController/PangaeaPlayerController.h"
 #include "Kismet/GameplayStatics.h"
+#include "NiagaraFunctionLibrary.h"
+#include "NavigationSystem.h"
+#include "NiagaraComponent.h"
+#include "Kismet/KismetArrayLibrary.h"
+#include "NiagaraDataInterfaceArrayFunctionLibrary.h"
 // Sets default values
 APangaeaPawn::APangaeaPawn()
 {
 	// Set this pawn to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
-	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
+	MDefaultRootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
+	SetRootComponent(MDefaultRootComponent);
+	bGenerateOverlapEventsDuringLevelStreaming=true;
 	MFloatMovementComp = CreateDefaultSubobject<UFloatingPawnMovement>(TEXT("FloatPawnMoveComp"));
 	MCursor = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PawnMesh"));
 	MCursor->SetupAttachment(GetRootComponent());
@@ -33,6 +41,12 @@ APangaeaPawn::APangaeaPawn()
 	MCameraBoom->TargetArmLength = 1139.f;
 	MCameraBoom->bEnableCameraLag = true;
 	MCameraBoom->SocketOffset = FVector(-300.f, 0.f, 80.f);
+	MCameraBoom->bEnableCameraRotationLag=true;
+	MCameraBoom->CameraLagSpeed=6.f;
+	MCameraBoom->CameraRotationLagSpeed=10.f;
+	MCameraBoom->CameraLagMaxDistance=0.f;
+	MCameraBoom->bUseCameraLagSubstepping=true;
+	MCameraBoom->CameraLagMaxTimeStep=0.016667f;
 
 
 	MCameraComp = CreateDefaultSubobject<UCameraComponent>(TEXT("CameraComp"));
@@ -65,6 +79,10 @@ void APangaeaPawn::BeginPlay()
 			MEnhanceInputSubsystem->AddMappingContext(MVillageInputMappingContext, 0);
 		}
 	}
+
+	//to bind the pangaea overlapping function and set the hover actor
+	OnActorBeginOverlap.AddDynamic(this,&ThisClass::APangaeaPawn::OnPangaeaPawnBeginOverlap);
+	OnActorEndOverlap.AddDynamic(this,&APangaeaPawn::OnPangaeaPawnEndOverlap);
 }
 
 void APangaeaPawn::CameraDepthOfField()
@@ -128,34 +146,49 @@ void APangaeaPawn::Zoom(const FInputActionValue& InputActionValue)
 
 void APangaeaPawn::DragMove(const FInputActionValue& InputActionValue)
 {
-	UE_LOG(LogTemp, Warning, TEXT("Dragmove triggered"))
+	
 	TrackMove();
 }
 
-void APangaeaPawn::DragOrSelect()
+void APangaeaPawn::DragOrSelect(const FInputActionValue& InputActionValue)
 {
+	
 	//store mouse position in target handle
 	CheckMouseScreenPosition();
-	//check if controller is null or not
-	VerifyPangaeaController();
-	if (MPangaeaPlayerController)
+    //check if overlapping with villager pawn or mere actor
+	 AActor* OverlappedVillager{VillagerOverlapCheck()};
+	if(!OverlappedVillager)     //no overlapping villager
 	{
-		MEnhanceInputSubsystem = !MEnhanceInputSubsystem
-			                         ? ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(
-				                         MPangaeaPlayerController->GetLocalPlayer())
-			                         : MEnhanceInputSubsystem;
-
-
-		if (MEnhanceInputSubsystem)
+		//drag
+		//check if controller is null or not
+		VerifyPangaeaController();
+		if (MPangaeaPlayerController)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("DragIMC Added"))
-			MEnhanceInputSubsystem->AddMappingContext(MDragInputMappingContext, 0);
-		}
+			MEnhanceInputSubsystem = !MEnhanceInputSubsystem
+										 ? ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(
+											 MPangaeaPlayerController->GetLocalPlayer())
+										 : MEnhanceInputSubsystem;
+
+
+			if (MEnhanceInputSubsystem)
+			{
+			
+				MEnhanceInputSubsystem->AddMappingContext(MDragInputMappingContext, 0);
+			}
+		}	
 	}
+	else
+	{
+		//available overlapping villager
+		VillagerSelect(Cast<APawn>(OverlappedVillager));
+	}
+	
+	
 }
 
-void APangaeaPawn::RemoveDragMappingContext()
+void APangaeaPawn::RemoveDragMappingContext(const FInputActionValue&InputActionValue)
 {
+	
 	//check if controller is null or not
 	VerifyPangaeaController();
 	if (MPangaeaPlayerController)
@@ -171,12 +204,20 @@ void APangaeaPawn::RemoveDragMappingContext()
 			ContextOptions.bIgnoreAllPressedKeysUntilRelease = true;
 			ContextOptions.bForceImmediately = true;
 			MEnhanceInputSubsystem->RemoveMappingContext(MDragInputMappingContext, ContextOptions);
-			UE_LOG(LogTemp, Warning, TEXT("DragIMC removed"))
+			
 		}
 	}
+
+	/*TODO: implement the villager action*/
+
+	if(MSelectedVillager)
+		VillagerRelease();
+		
 }
 
-void APangaeaPawn::HoverActor()
+
+
+void APangaeaPawn::HoverActor(const FInputActionValue&InputActionValue)
 {
 	// do nothing for now
 }
@@ -190,24 +231,66 @@ FVector APangaeaPawn::CalculateCameraAndBoomOffset()
 		UKismetMathLibrary::Subtract_DoubleDouble(MCameraBoom->TargetArmLength, MCameraBoom->SocketOffset.X)
 	};
 
-	FVector ScaledArmLength{UKismetMathLibrary::Multiply_VectorFloat(GetActorForwardVector(), DeltaTargetArmSocketX)};
-	ScaledArmLength = UKismetMathLibrary::Multiply_VectorFloat(ScaledArmLength, -1.f);
-	const FVector ScaledSocketZUpVector{
-		UKismetMathLibrary::Multiply_VectorFloat(MCameraBoom->GetUpVector(), MCameraBoom->SocketOffset.Z)
-	};
+	FVector ScaledArmLength{UKismetMathLibrary::Multiply_VectorFloat(MCameraBoom->GetForwardVector(), DeltaTargetArmSocketX*-1.f)};
+	
+	const FVector ScaledSocketZUpVector{UKismetMathLibrary::Multiply_VectorFloat(MCameraBoom->GetUpVector(), MCameraBoom->SocketOffset.Z)};
 
 
 	FVector SpringArmVector{UKismetMathLibrary::Add_VectorVector(ScaledArmLength, ScaledSocketZUpVector)};
 	SpringArmVector = UKismetMathLibrary::Add_VectorVector(SpringArmVector, MCameraBoom->GetComponentLocation());
-	return UKismetMathLibrary::Subtract_VectorVector(MCameraComp->GetComponentLocation(), SpringArmVector);
+	return UKismetMathLibrary::Subtract_VectorVector( SpringArmVector,MCameraComp->GetComponentLocation());
+	
+}
+
+void APangaeaPawn::CheckAndSetClosetHoverActor()
+{
+	if(!MCollisionSphereComp)return;
+	TArray<AActor*>OverlappingActors;
+	//used to set the new actor that is being collision with temporarily
+	AActor*NewHover{nullptr};
+	MCollisionSphereComp->GetOverlappingActors(OverlappingActors,AActor::StaticClass());
+    if(OverlappingActors.IsEmpty())
+    {
+    	GetWorldTimerManager().PauseTimer(MClosetHoverTimerHandle);
+    	UE_LOG(LogTemp,Warning,TEXT("Timer paused"))
+    }
+    	
+	else
+	{
+		if(!NewHover)
+		{
+			//find the distance of overlapping actors and find the closest one
+			for (const auto& OverlappingActor : OverlappingActors)
+			{
+				//set new actor tot the first array index
+				if (OverlappingActor == OverlappingActors[0])
+					NewHover = OverlappingActor;
+
+				//continue looping through the array to find a lesser vector than the new hover
+				const FVector DistanceSphere{MCollisionSphereComp->GetComponentLocation()};
+				const FVector DistanceNewHoverActor{NewHover->GetActorLocation()};
+				const FVector DistanceOverlappingActor{OverlappingActor->GetActorLocation()};
+				//get the lesser distance and init new hover actor if there is any
+				if (UKismetMathLibrary::Vector_Distance(DistanceSphere, DistanceOverlappingActor) <
+					UKismetMathLibrary::Vector_Distance(DistanceSphere, DistanceNewHoverActor))
+				{
+					NewHover = OverlappingActor;
+				}
+			}
+		}
+		if(NewHover!=MHoverActor)SetHoverActor(NewHover);
+	}
+    	
+    	
+    	
+	
 }
 
 
 void APangaeaPawn::CheckMouseScreenPosition()
 {
 	//store mouse deprojected position and store in target handle
-	const FMouseProjectionResult MouseProjectionResult{ProjectMouseToGround()};
-	MMouseTargetHandle = MouseProjectionResult.MIntersectionPoint;
+	MMouseTargetHandle = ProjectMouseToGround().MIntersectionPoint;
 }
 
 FMouseProjectionResult APangaeaPawn::ProjectMouseToGround()
@@ -278,13 +361,14 @@ void APangaeaPawn::TrackMove()
 
 	FVector MouseTargetDelta{
 		UKismetMathLibrary::Subtract_VectorVector(MMouseTargetHandle,
-		                                          MouseProjectionResult.MIntersectionPoint - CameraAndBoomDelta)
+		                                          MouseProjectionResult.MIntersectionPoint)
 	};
+	MouseTargetDelta=UKismetMathLibrary::Subtract_VectorVector(MouseTargetDelta,CameraAndBoomDelta);
 	MouseTargetDelta.Z = 0.f;
 
 	if (MouseProjectionResult.MValidProjection)
 	{
-		//move pawn towards mouse direction
+		//move pawn towards mouse directions
 		AddActorWorldOffset(MouseTargetDelta);
 	}
 }
@@ -418,6 +502,113 @@ FCursorDistanceFromViewportResult APangaeaPawn::EdgeMove()
 		Result.MStrength = CursorResult.MStrength;
 	}
 	return Result;
+}
+
+void APangaeaPawn::OnPangaeaPawnBeginOverlap(AActor* OverlappedActor, AActor* OtherActor)
+{
+	if(!MHoverActor)MHoverActor=OtherActor;
+	//check for the closest hovering actor to player collision sphere
+	StartClosestHoverCheckTimer();
+	
+}
+
+void APangaeaPawn::OnPangaeaPawnEndOverlap(AActor* OverlappedActor, AActor* OtherActor)
+{
+	//check for overlapping actors and set hover actor to null if non was found.
+	TArray<AActor*>OverlappingActors;
+	GetOverlappingActors(OverlappingActors,AActor::StaticClass());
+	if(OverlappingActors.IsEmpty())
+		MHoverActor=nullptr;
+	
+}
+
+void APangaeaPawn::StartClosestHoverCheckTimer()
+{
+	UE_LOG(LogTemp,Warning,TEXT("timer started"))
+	GetWorldTimerManager().SetTimer(MClosetHoverTimerHandle,this,&APangaeaPawn::CheckAndSetClosetHoverActor,MCloseHoverLoopTime,true);
+}
+
+void APangaeaPawn::UpdatePathway()
+{
+	//init the nav mesh bound actor in world
+	UNavigationSystemV1*NavMesh{FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld())};
+	if(NavMesh&&MCollisionSphereComp&&MSelectedVillager)
+	{
+		//get the pathway from the start to end
+		FVector StartPath{MCollisionSphereComp->GetComponentLocation()};
+		FVector EndPath{MSelectedVillager->GetActorLocation()};
+	 UNavigationPath*NavigationPath{NavMesh->FindPathToLocationSynchronously(this,StartPath,EndPath)};
+		if (NavigationPath&&NavigationPath->PathPoints.IsValidIndex(1))  //to be sure there is a start and end point
+		{
+			//init the array of vectors in the path
+			MPathPoints=NavigationPath->PathPoints;
+			//init the first and end array index with the start and end vectors
+			MPathPoints[0]=MCollisionSphereComp->GetComponentLocation();
+			MPathPoints.Last()=MSelectedVillager->GetActorLocation();
+			if(MNiagaraComponentPath)
+				UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayVector(MNiagaraComponentPath,FName{"TargetPath"},MPathPoints);
+				
+			
+		}
+	
+		
+	}
+}
+
+AActor* APangaeaPawn::VillagerOverlapCheck()
+{
+	//to confirm if actor is really overlapping with a pawn
+	TArray<AActor*>OverlappingActors;
+	GetOverlappingActors(OverlappingActors,APawn::StaticClass());
+	//to be sure the the array of overlap actors are not empty
+	if(!OverlappingActors.IsEmpty())
+	{
+		for(auto& Actor:OverlappingActors)
+		{
+			if(Actor&&Actor==OverlappingActors[0])
+				return Actor;
+		}
+	}
+	return nullptr;
+}
+
+void APangaeaPawn::VillagerSelect(APawn* PangaeaPawn)
+{
+	if (!PangaeaPawn)return;
+	//init selected villager
+	MSelectedVillager=PangaeaPawn;
+	if (MNiagaraTargetSystem)
+	{
+		MNiagaraComponentPath = UNiagaraFunctionLibrary::SpawnSystemAttached(MNiagaraTargetSystem,
+			GetRootComponent(),FName{""},
+			FVector(),
+			FRotator(),
+			EAttachLocation::SnapToTarget,false);
+		UE_LOG(LogTemp,Warning,TEXT("Spawn niagara"))
+		DrawDebugPoint(GetWorld(),GetRootComponent()->GetComponentLocation(),10.f,FColor::Red,true,10.f);
+		StartUpdatePathTimer();
+	}
+	/*TODO: solve spawn bug*/
+}
+
+void APangaeaPawn::VillagerRelease()
+{
+  StopUpdatePathTimer();	
+}
+
+
+void APangaeaPawn::StartUpdatePathTimer()
+{
+	GetWorldTimerManager().SetTimer(MUpdatePathTimerHandle,
+		this,&APangaeaPawn::UpdatePathway,
+		MUpdatePathResetTime,true);
+}
+
+void APangaeaPawn::StopUpdatePathTimer()
+{
+	GetWorldTimerManager().PauseTimer(MUpdatePathTimerHandle);
+	if (MNiagaraComponentPath)
+		MNiagaraComponentPath->DestroyComponent();
 }
 
 // Called every frame
