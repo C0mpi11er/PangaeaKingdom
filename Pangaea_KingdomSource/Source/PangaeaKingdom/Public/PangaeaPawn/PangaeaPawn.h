@@ -9,8 +9,10 @@
 #include "UObject/ObjectPtr.h"
 #include "CoreMinimal.h"
 #include "GameFramework/Pawn.h"
+#include "PangaeaKingdom/PangaeaKingdom.h"
 #include "PangaeaPawn.generated.h"
 
+enum class EGameInputType : uint8;
 //used to store result for mouse projection to plane
 USTRUCT()
 struct FMouseProjectionResult
@@ -54,7 +56,10 @@ public:
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
-	
+	virtual void PossessedBy(AController* NewController) override;
+	//called to switch the input type of game
+	UFUNCTION()
+	void InputSwitch(EGameInputType GameInput);
 	void CameraDepthOfField();
 	//called to update the zoom
 	void UpdateZoom();
@@ -168,6 +173,8 @@ private:
 	UPROPERTY(EditAnywhere)
 	TObjectPtr<class USpringArmComponent> MCameraBoom;
 
+	EGameInputType M_GameInputType{EGameInputType::EGT_Gamepad};
+	 
 	UPROPERTY(EditAnywhere)
 	TObjectPtr<class UCameraComponent> MCameraComp;
 

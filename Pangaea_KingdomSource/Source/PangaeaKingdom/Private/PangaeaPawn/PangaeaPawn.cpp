@@ -167,6 +167,33 @@ void APangaeaPawn::BeginPlay()
 	
 }
 
+void APangaeaPawn::PossessedBy(AController* NewController)
+{
+	Super::PossessedBy(NewController);
+	if(APangaeaPlayerController*PangaeaPlayerController{Cast<APangaeaPlayerController>(NewController)})
+		PangaeaPlayerController->M_GameKeySwitchDelegate.AddDynamic(this,&ThisClass::APangaeaPawn::InputSwitch);
+}
+
+void APangaeaPawn::InputSwitch(EGameInputType GameInput)
+{
+	switch (GameInput)
+	{
+	case EGameInputType::EGT_Gamepad:
+		if (MCollisionSphereComp)
+		{
+			//reset cursor position and hide mouse
+			MCollisionSphereComp->SetRelativeLocation(FVector(0.f, 0.f, 10.f));
+		}
+		if (MCursor)
+			MCursor->SetHiddenInGame(false);
+		break;
+	//hide mouse only
+	case EGameInputType::EGT_Mouse:
+		if (MCursor)
+			MCursor->SetHiddenInGame(false);
+	default: break;
+	}
+}
 
 
 void APangaeaPawn::CameraDepthOfField()
