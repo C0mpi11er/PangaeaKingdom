@@ -1,6 +1,10 @@
 // Fill out your copyright notice in the Description page of Project Settings.
-
+/*this class is the representation of the player in the game
+ * this class informs villagers on task to perform by clicking and dragging towards respective interact-ables in world
+ */
 #pragma once
+
+#include "PangaeaPawn/Interfaces/PangaeaPawnInterface.h"
 #include "InputActionValue.h"
 #include "UObject/ObjectPtr.h"
 #include "CoreMinimal.h"
@@ -21,35 +25,58 @@ USTRUCT()
 struct FCursorDistanceFromViewportResult
 {
 	GENERATED_BODY()
-    // the direction of the mouse cursor 
+	// the direction of the mouse cursor 
 	FVector MDirection{};
-    
+
 	float MStrength{};
 };
 
 
 UCLASS()
-class PANGAEAKINGDOM_API APangaeaPawn : public APawn
+class PANGAEAKINGDOM_API APangaeaPawn : public APawn, public IPangaeaPawnInterface
 {
 	GENERATED_BODY()
 
 public:
 	// Sets default values for this pawn's properties
 	APangaeaPawn();
+	/*interfaces*/
+	virtual void BeginBuild(TSubclassOf<AInteractableObject> InteractableClass) override;
+	virtual void SwitchBuildMode(bool CanSwitchToBuildMode) override;
 
+	//to destroy the interactable object 
+	void DestroySpawnInteractableObject();
+	//this function spawn the build target selected from the build ui
+	void SpawnInteractableObject();
+    //rotate spawn interactable object object
+	void RotateSpawnInteractable();
+    
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
+	
 	void CameraDepthOfField();
 	//called to update the zoom
 	void UpdateZoom();
+	//initialize the spawn overlay
+	void CreateBuildOverlay();
+	//to do a boolean check if spawn interactable is on island 
+	bool CheckSpawnNavCorners();
+	//converts mouse on screen movement to accurate x and y axis fvector locations
+	 FVector ConvertToSteppedPos(FVector&LocationVector);
+	//updates the spawn intractable location in ref to mouse on screen pos
+	void UpdateBuildAsset();
+	
 
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+
 	//to check if controller is valid and set it
 	void VerifyPangaeaController();
+	//to check if enhanced input subsystem is valid and set it 
+	void VerifyEnhancedInputSubSystem();
 	//BindInputActions
 	UFUNCTION()
 	void Move(const FInputActionValue& InputActionValue);
@@ -57,17 +84,22 @@ protected:
 	void Zoom(const FInputActionValue& InputActionValue);
 	void DragMove(const FInputActionValue& InputActionValue);
 	//used to select village if valid or drag other wise
-	void DragOrSelect(const FInputActionValue&InputActionValue);
+	void DragOrSelect(const FInputActionValue& InputActionValue);
 	//to remove the drag mapping context
-	void RemoveDragMappingContext(const FInputActionValue&InputActionValue);
-	
+	void RemoveDragMappingContext(const FInputActionValue& InputActionValue);
+	//used to triggered the build mode input action,also updates the build asset
+	void StartBuildMode();
+
+	//this function is called when the build mode IA is complete is also stops the build asset update
+	void EndBuildMode();
+
 	//called weh villager mapping context is triggered
-	void HoverActor(const FInputActionValue&InputActionValue);
+	void InitializeVillagerAction();
 	//calculates the offset between the camera and spring arm if using lag
 	FVector CalculateCameraAndBoomOffset();
-     //this function check for the closest actor this class is hovering over and sets it to the hover actor
-     void CheckAndSetClosetHoverActor();
-	
+	//this function check for the closest actor this class is hovering over and sets it to the hover actor
+	void CheckAndSetClosetHoverActor();
+
 	//use to check the current mouse and set it 
 	void CheckMouseScreenPosition();
 
@@ -90,13 +122,13 @@ protected:
 
 	FCursorDistanceFromViewportResult CursorDistanceFromViewportCentre(const FVector2d& CursorPosOffset);
 
-	    //edge screen movement
+	//edge screen movement
 	FCursorDistanceFromViewportResult EdgeMove();
 
 
 	//this function is triggered when this pawn overlaps with another actor
 	UFUNCTION()
-	void OnPangaeaPawnBeginOverlap(AActor*OverlappedActor,AActor*OtherActor);
+	void OnPangaeaPawnBeginOverlap(AActor* OverlappedActor, AActor* OtherActor);
 
 	UFUNCTION()
 	void OnPangaeaPawnEndOverlap(AActor* OverlappedActor, AActor* OtherActor);
@@ -109,23 +141,26 @@ protected:
 	//update the path for villager to take to perform a given task
 	UFUNCTION()
 	void UpdatePathway();
-    //this function check if the hover actor is on a villager or not
+	//this function check if the hover actor is on a villager or not
 	AActor* VillagerOverlapCheck();
 
 	//this functions spawns the niagara path system and calls the update path function
-	void VillagerSelect(APawn*PangaeaPawn);
+	void VillagerSelect(APawn* PangaeaPawn);
 
 	//to release the selected villager to perform an action if there is one
 	void VillagerRelease();
-    
-	
-    //starts update part timer and loops till selected villager is released
+
+
+	//starts update part timer and loops till selected villager is released
 	void StartUpdatePathTimer();
 
 	//stops the update pathway function from looping
 	UFUNCTION()
 	void StopUpdatePathTimer();
+
 private:
+    //use to init if the interactable object can be dropped or not in begin build
+	bool bCanDropInteractable{false};
 	//to select Actors
 	UPROPERTY(EditAnywhere)
 	TObjectPtr<UStaticMeshComponent> MCursor;
@@ -152,6 +187,10 @@ private:
 	//mapping context for drag
 	UPROPERTY(EditAnywhere)
 	TObjectPtr<class UInputMappingContext> MDragInputMappingContext;
+
+	//mapping context for building mode
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<UInputMappingContext> MBuildInputMappingContext;
 	/*/MappingContext*/
 
 	/*Input Actions*/
@@ -174,6 +213,9 @@ private:
 	UPROPERTY(EditAnywhere)
 	TObjectPtr<class UInputAction> MInputActionVillager;
 
+	//input action for build mode
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<UInputAction> MInputActionBuild;
 	/*/InputAction*/
 
 	UPROPERTY(EditAnywhere)
@@ -207,7 +249,7 @@ private:
 
 	//the actor the Pangaea_pawn is overing over
 	UPROPERTY(VisibleAnywhere)
-	TObjectPtr<AActor>MHoverActor;
+	TObjectPtr<AActor> MHoverActor;
 
 	//the timer that starts and pauses the looping closets actor check function
 	FTimerHandle MClosetHoverTimerHandle;
@@ -216,31 +258,49 @@ private:
 	float MCloseHoverLoopTime{0.01};
 
 	//the niagara system that spawns when a villager is selected
-    UPROPERTY(EditAnywhere)
-	TObjectPtr<class UNiagaraSystem>MNiagaraTargetSystem;
-	
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<class UNiagaraSystem> MNiagaraTargetSystem;
+
 	//to identify the villager path and target,pointer to the niagara target system
 	UPROPERTY(EditAnywhere)
-	TObjectPtr<class UNiagaraComponent>MNiagaraComponentPath;
+	TObjectPtr<class UNiagaraComponent> MNiagaraComponentPath;
 
 	//pointer to the currently selected villager
 	UPROPERTY(VisibleAnywhere)
-	TObjectPtr<class AActor>MSelectedVillager;
+	TObjectPtr<class AActor> MSelectedVillager;
 
 	UPROPERTY(EditAnywhere)
-	TObjectPtr<USceneComponent>MDefaultRootComponent;
+	TObjectPtr<USceneComponent> MDefaultRootComponent;
 
 	//paths vector array on nav mesh  from Cursor to Selected villager
 	UPROPERTY()
-	TArray<FVector>MPathPoints;
+	TArray<FVector> MPathPoints;
 
 	//handles the timer for the update pathway function
 	FTimerHandle MUpdatePathTimerHandle;
 	//after this time the functions triggers again
 	float MUpdatePathResetTime{0.01f};
+	//informs the villager on the job type to perform
+	UPROPERTY()
+	TObjectPtr<AActor> MVillagerAction;
+
+	//this is the pointer to the spawned interactable class
+	UPROPERTY()
+	TObjectPtr<class AInteractableObject> MinterInteractableSpawnObject;
+
+	//the bp class of the interactable to spawn,init on begin build
+	UPROPERTY()
+	TSubclassOf<class AInteractableObject>MInteractableToSpawnClass;
+	//to be parented by the interactable obj just before spawn
+	UPROPERTY()
+	TObjectPtr<class UStaticMeshComponent> MSpawnOverlay;
+
+	//to change color of placeable material color on valid spawn position or not
+	UPROPERTY(EditAnywhere)
+    TObjectPtr<class UMaterialParameterCollection>MMaterialParameterCollection;
 public:
 	//returns and cast pangaea Pawn controller to a player controller
 	APlayerController* GetPangaeaPlayerController() const;
 
-	FORCEINLINE void SetHoverActor(AActor*T_HoverActor){MHoverActor=T_HoverActor;}
+	FORCEINLINE void SetHoverActor(AActor* T_HoverActor) { MHoverActor = T_HoverActor; }
 };

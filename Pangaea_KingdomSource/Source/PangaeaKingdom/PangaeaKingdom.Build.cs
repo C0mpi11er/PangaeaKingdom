@@ -8,7 +8,7 @@ public class PangaeaKingdom : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 	
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore","EnhancedInput","Niagara","NiagaraCore","NavigationSystem" });
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore","EnhancedInput","Niagara","NiagaraCore","NavigationSystem","AIModule","UMG","CommonUI" });
 
 		PrivateDependencyModuleNames.AddRange(new string[] {  });
 
